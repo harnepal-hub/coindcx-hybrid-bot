@@ -24,15 +24,26 @@ max_daily_loss = st.sidebar.number_input(
     "Daily Max Loss Circuit Breaker (₹)", value=1000, step=100
 )
 
-# API Keys (Only required for Live API mode)
+# API Keys Configuration
 api_key = ""
 api_secret = ""
+
 if trade_mode == "LIVE API":
-  api_key = st.sidebar.text_input("CoinDCX API Key", type="password")
-  api_secret = st.sidebar.text_input("CoinDCX API Secret", type="password")
+  # Priority 1: Check Streamlit Secrets Vault
+  if "COINDCX_API_KEY" in st.secrets and "COINDCX_API_SECRET" in st.secrets:
+    api_key = st.secrets["COINDCX_API_KEY"]
+    api_secret = st.secrets["COINDCX_API_SECRET"]
+    st.sidebar.success("🔒 API Keys Loaded from Cloud Secrets!")
+  else:
+    # Priority 2: Sidebar Manual Input
+    api_key = st.sidebar.text_input("CoinDCX API Key", type="password")
+    api_secret = st.sidebar.text_input("CoinDCX API Secret", type="password")
+
   st.session_state.engine = CoinDCXEngine(
       api_key=api_key, api_secret=api_secret, paper_trading=False
   )
+else:
+  st.session_state.engine = CoinDCXEngine(paper_trading=True)
 
 # Live Status Metrics
 col1, col2, col3 = st.columns(3)
