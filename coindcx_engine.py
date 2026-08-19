@@ -121,29 +121,29 @@ class CoinDCXEngine:
           "fee_deducted_inr": round(estimated_fee, 2),
       }
 
-    # Timestamp Generation
+    # Format side string strictly to 'buy' or 'sell'
+    clean_side = "buy" if "BUY" in side.upper() else "sell"
     server_timestamp = int(time.time() * 1000)
 
-    # Standard Spot and Derivatives Endpoint Router
     if market_type == "spot":
       endpoint = "/exchange/v1/orders/create"
       body = {
-          "side": side.lower(),
+          "side": clean_side,
           "order_type": "limit_order",
-          "market": pair,
-          "price": float(price),
-          "total_quantity": float(quantity),
+          "market": str(pair).strip(),
+          "price_per_unit": round(float(price), 4),
+          "total_quantity": round(float(quantity), 4),
           "timestamp": server_timestamp,
       }
     else:
-      # CoinDCX Futures (Derivatives Order Creation)
+      # Derivatives / Futures Order Payload
       endpoint = "/exchange/v1/derivatives/futures/orders/create"
       body = {
-          "side": side.lower(),
+          "side": clean_side,
           "order_type": "limit_order",
-          "pair": pair,
-          "price": float(price),
-          "total_quantity": float(quantity),
+          "pair": str(pair).strip(),
+          "price": round(float(price), 4),
+          "total_quantity": round(float(quantity), 4),
           "leverage": int(leverage),
           "timestamp": server_timestamp,
       }
@@ -162,28 +162,21 @@ class CoinDCXEngine:
           BASE_URL + endpoint, headers=headers, data=json_body, timeout=10
       )
 
-      # Safe JSON Handling Check
-      if res.status_code == 200:
-        try:
-          return res.json()
-        except Exception:
-          return {
-              "status": "FAILED",
-              "error": f"Raw non-JSON response from CoinDCX: {res.text}",
-          }
+      # Diagnostic response handling
+      try:
+        res_data = res.json()
+      except Exception:
+        res_data = res.text
+
+      if res.status_code in [200, 201]:
+        return {"status": "SUCCESS", "data": res_data}
       else:
-        try:
-          return {
-              "status": "FAILED",
-              "http_code": res.status_code,
-              "response": res.json(),
-          }
-        except Exception:
-          return {
-              "status": "FAILED",
-              "http_code": res.status_code,
-              "error_text": res.text,
-          }
+        return {
+            "status": "FAILED",
+            "http_code": res.status_code,
+            "details": res_data,
+            "sent_payload": body,
+        }
 
     except Exception as e:
       return {"status": "FAILED", "error": str(e)}
