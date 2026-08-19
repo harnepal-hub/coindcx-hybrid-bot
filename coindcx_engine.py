@@ -21,12 +21,12 @@ class CoinDCXEngine:
     ).hexdigest()
 
   def get_live_ticker(self, market_type="futures"):
-    """Fetches real-time price tickers for Spot or Futures markets."""
-    endpoint = (
-        "/exchange/ticker"
-        if market_type == "spot"
-        else "/exchange/v1/derivatives/futures/data/active_instruments"
-    )
+    """Fetches real-time price tickers for Spot or Futures markets.
+
+    CoinDCX's /exchange/ticker endpoint returns active pricing objects for all
+    markets (e.g. I-BTC_INR, B-BTC_USDT).
+    """
+    endpoint = "/exchange/ticker"
     try:
       resp = requests.get(BASE_URL + endpoint, timeout=5)
       if resp.status_code == 200:
@@ -55,29 +55,28 @@ class CoinDCXEngine:
     if rrr < 1.3:
       return False, f"Risk-to-Reward Ratio ({rrr:.2f}) is below minimum 1:1.3"
 
-    # 2. Check Orderbook Spread (Simulated sanity check via public ticker)
+    # 2. Check Orderbook Spread / Slippage via public ticker
     tickers = self.get_live_ticker(market_type)
     current_price = None
 
-    if market_type == "spot":
-      for t in tickers:
-        if t.get("market") == pair:
-          current_price = float(t.get("last_price", 0))
-          break
-    else:
-      # Futures parsing
-      if isinstance(tickers, list):
-        for item in tickers:
-          if item.get("pair") == pair or item.get("symbol") == pair:
+    if isinstance(tickers, list):
+      for item in tickers:
+        # Check if item is a dictionary containing market data
+        if isinstance(item, dict):
+          item_pair = (
+              item.get("market") or item.get("pair") or item.get("symbol")
+          )
+          if item_pair == pair:
             current_price = float(item.get("last_price", 0))
             break
 
-    if current_price:
+    if current_price and current_price > 0:
       slippage = abs(current_price - entry_price) / entry_price * 100
       if slippage > max_spread_pct:
         return (
             False,
-            f"Slippage too high ({slippage:.2f}%). Market price moved away.",
+            f"Slippage too high ({slippage:.2f}%). Current price"
+            f" ({current_price}) moved away from entry ({entry_price}).",
         )
 
     return True, "Signal Validated Successfully"
