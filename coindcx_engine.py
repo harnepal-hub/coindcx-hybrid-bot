@@ -121,32 +121,32 @@ class CoinDCXEngine:
           "fee_deducted_inr": round(estimated_fee, 2),
       }
 
-    # Dynamic server time sync
-    try:
-      time_res = requests.get(f"{BASE_URL}/exchange/v1/time", timeout=3).json()
-      server_timestamp = time_res.get("server_time", int(time.time() * 1000))
-    except Exception:
-      server_timestamp = int(time.time() * 1000)
+    # Timestamp Generation
+    server_timestamp = int(time.time() * 1000)
 
-    endpoint = (
-        "/exchange/v1/orders/create"
-        if market_type == "spot"
-        else "/exchange/v1/derivatives/futures/orders/create"
-    )
-
-    body = {
-        "side": side.lower(),
-        "order_type": "limit_order",
-        "price": float(price),
-        "total_quantity": float(quantity),
-        "timestamp": server_timestamp,
-    }
-
+    # Standard Spot and Derivatives Endpoint Router
     if market_type == "spot":
-      body["market"] = pair
+      endpoint = "/exchange/v1/orders/create"
+      body = {
+          "side": side.lower(),
+          "order_type": "limit_order",
+          "market": pair,
+          "price": float(price),
+          "total_quantity": float(quantity),
+          "timestamp": server_timestamp,
+      }
     else:
-      body["pair"] = pair
-      body["leverage"] = leverage
+      # CoinDCX Futures (Derivatives Order Creation)
+      endpoint = "/exchange/v1/derivatives/futures/orders/create"
+      body = {
+          "side": side.lower(),
+          "order_type": "limit_order",
+          "pair": pair,
+          "price": float(price),
+          "total_quantity": float(quantity),
+          "leverage": int(leverage),
+          "timestamp": server_timestamp,
+      }
 
     json_body = json.dumps(body, separators=(",", ":"))
     signature = self._generate_signature(json_body)
@@ -161,6 +161,29 @@ class CoinDCXEngine:
       res = requests.post(
           BASE_URL + endpoint, headers=headers, data=json_body, timeout=10
       )
-      return res.json()
+
+      # Safe JSON Handling Check
+      if res.status_code == 200:
+        try:
+          return res.json()
+        except Exception:
+          return {
+              "status": "FAILED",
+              "error": f"Raw non-JSON response from CoinDCX: {res.text}",
+          }
+      else:
+        try:
+          return {
+              "status": "FAILED",
+              "http_code": res.status_code,
+              "response": res.json(),
+          }
+        except Exception:
+          return {
+              "status": "FAILED",
+              "http_code": res.status_code,
+              "error_text": res.text,
+          }
+
     except Exception as e:
       return {"status": "FAILED", "error": str(e)}
